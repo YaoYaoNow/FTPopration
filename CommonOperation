@@ -1,0 +1,194 @@
+edtFTPnet官方网站：
+http://www.enterprisedt.com/products/edtftpnet/
+
+目前最新版本为2.2.3，下载后在bin目录中找到edtFTPnet.dll，在项目中添加引用。
+下面为一些用法：
+
+1、FTP服务器根目录为web，在它下面创建如下图示的目录和上传文件
+
+FTPConnection.CommandEncoding = Encoding.GetEncoding("GBK") 指定GBK编码以支持中文文件名
+FTPConnection.CreateDirectory() 创建指定目录
+FTPConnection.ChangeWorkingDirectory() 切换到指定目录
+FTPConnection.UploadFile() 上传文件
+
+web
+|-----L11
+       |-----L21            
+              |-----L31
+                      |-----31.htm
+              |-----21.htm
+       |-----L22
+       |-----11.htm
+       |-----目录.txt
+[csharp] view plain copy
+
+ print?
+private const string ftpServerIP = "xx.xx.xx.xx";  
+private const string ftpRemotePath = "web";  
+private const string ftpUserID = "user";  
+private const string ftpPassword = "123";  
+  
+private void btnCreateAndUpload_Click(object sender, EventArgs e)  
+{            
+    using (var conn = new FTPConnection  
+    {  
+        ServerAddress = ftpServerIP,  
+        ServerDirectory = ftpRemotePath,  
+        UserName = ftpUserID,  
+        Password = ftpPassword,  
+        CommandEncoding = Encoding.GetEncoding("GBK")  
+    })  
+    {  
+        conn.Connect();                  
+  
+        //创建目录L11  
+        conn.CreateDirectory("L11");  
+  
+        //============切换当前工作目录到L11============  
+        conn.ChangeWorkingDirectory("L11");  
+        //上行代码也可以用conn.ServerDirectory = "L11";  
+  
+        //上传"文档.txt"  
+        conn.UploadFile("文档.txt", "文档.txt");  
+  
+        //创建子目录L21,L22  
+        conn.CreateDirectory("L21");  
+        conn.CreateDirectory("L22");  
+  
+        //在当前工作目录L11上传文件"L11.htm"  
+        conn.UploadFile("11.htm", "11.htm");  
+  
+        //============切换当前工作目录到L21============  
+        conn.ChangeWorkingDirectory("L21");  
+  
+        //上传文件21.htm  
+        conn.UploadFile("21.htm", "21.htm");  
+        //创建目录L31  
+        conn.CreateDirectory("L31");  
+  
+        //============切换当前工作目录到L31============  
+        conn.ChangeWorkingDirectory("L31");  
+  
+        //上传文件31.htm  
+        conn.UploadFile("31.htm", "31.htm");  
+    }  
+}  
+2、获取文件信息
+
+FTPConnection.GetFileInfos() 获取文件和目录详细信息，结果的一个属性Dir为true表示为目录，否则为文件
+[csharp] view plain copy
+
+ print?
+private void btnList_Click(object sender, EventArgs e)  
+{  
+    using (var conn = new FTPConnection  
+    {  
+        ServerAddress = ftpServerIP,  
+        ServerDirectory = ftpRemotePath,  
+        UserName = ftpUserID,  
+        Password = ftpPassword,  
+        CommandEncoding = Encoding.GetEncoding("GBK")  
+    })  
+    {  
+        conn.Connect();  
+        //获取指定目录的所有子目录和文件信息  
+        conn.ChangeWorkingDirectory("L11/L21");                 
+        var files1 = conn.GetFileInfos();  
+        ShowFileInfos(files1);  
+        /*结果如下： 
+         File, /web/L11/L21/21.htm, 21.htm, 11.2KB, 2013-9-26 14:51:00 
+         Dir, /web/L11/L21/L31, L31, 0KB, 2013-9-26 14:51:00 
+         */  
+  
+        ////返回上级目录，例子中为web/L11  
+        conn.ChangeWorkingDirectoryUp();  
+        var files2 = conn.GetFileInfosRecursive();  
+        ShowFileInfos(files2);  
+        /*结果如下： 
+        File, /web/L11/11.htm, 11.htm, 59.4KB, 2013-9-26 14:51:00 
+        Dir, /web/L11/L21, L21, 0KB, 2013-9-26 14:51:00 
+        Dir, /web/L11/L22, L22, 0KB, 2013-9-26 14:51:00 
+        File, /web/L11/文档.txt, 文档.txt, 40.8KB, 2013-9-26 14:51:00 
+        File, /web/L11/L21/21.htm, 21.htm, 11.2KB, 2013-9-26 14:51:00 
+        Dir, /web/L11/L21/L31, L31, 0KB, 2013-9-26 14:51:00 
+        File, /web/L11/L21/L31/31.htm, 31.htm, 5.6KB, 2013-9-26 14:51:00 
+         */  
+    }  
+}        
+void ShowFileInfos(FTPFile[] files)  
+{  
+    foreach (var file in files)  
+    {  
+        string info = string.Format("{0}, {1}, {2}, {3}KB, {4}",  
+            file.Dir ? "Dir" : "File", file.Path, file.Name, Math.Round(file.Size / 1024.0, 1), file.LastModified);  
+        richTextBox1.AppendText(info + "\r\n");  
+    }  
+    richTextBox1.AppendText("\r\n");  
+}  
+其中递归获取指定目录的所有子目录和文件信息的扩展方法GetFileInfosRecursive如下：
+[csharp] view plain copy
+
+ print?
+public static class FtpClientExtensions  
+{  
+    /// <summary>  
+    /// 递归获取目录的所有子目录和文件信息  
+    /// </summary>  
+    public static FTPFile[] GetFileInfosRecursive(this FTPConnection conn)  
+    {  
+        var resultList = new List<FTPFile>();  
+        var fileInfos = conn.GetFileInfos();  
+        resultList.AddRange(fileInfos);  
+        foreach (var fileInfo in fileInfos)  
+        {  
+            if (fileInfo.Dir)  
+            {  
+                conn.ServerDirectory = fileInfo.Path;  
+                resultList.AddRange(conn.GetFileInfosRecursive());  
+            }  
+        }  
+        return resultList.ToArray();  
+    }  
+    /// <summary>  
+    /// 递归删除目录(包括所有子目录和文件信息)  
+    /// </summary>  
+    public static void DeleteDirectoryRecursive(this FTPConnection conn, string directoryName)  
+    {  
+        conn.ChangeWorkingDirectory(directoryName);  
+        var fileInfos = conn.GetFileInfos();  
+        foreach (var fileInfo in fileInfos)  
+        {  
+            if (fileInfo.Dir)  
+                conn.DeleteDirectoryRecursive(fileInfo.Name);  
+            else  
+                conn.DeleteFile(fileInfo.Name);  
+        }  
+        conn.ChangeWorkingDirectoryUp();  
+        conn.DeleteDirectory(directoryName);  
+    }  
+}  
+3、删除目录及所有子目录和文件
+
+FTPConnection.DeleteDirectory()当删除的目录不为空时，会出错，需递归删除，
+递归删除目录扩展方法DeleteDirectoryRecursive见上面类FtpClientExtensions
+[csharp] view plain copy
+
+ print?
+private void btnDelete_Click(object sender, EventArgs e)  
+{  
+    using (var conn = new FTPConnection  
+    {  
+        ServerAddress = ftpServerIP,  
+        ServerDirectory = ftpRemotePath,  
+        UserName = ftpUserID,  
+        Password = ftpPassword,  
+        CommandEncoding = Encoding.GetEncoding("GBK")  
+    })  
+    {  
+        conn.Connect();                
+        //递归删除目录及所有子目录和文件  
+        conn.DeleteDirectoryRecursive("L11");  
+        //如果删除单个文件，路径为当前目录的相对路径  
+        //conn.DeleteFile("L11/11.htm");  
+    }  
+}  
